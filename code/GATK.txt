@@ -1,0 +1,86 @@
+#本流程基于GATK4.0版本进行
+
+#1.对参考基因组建立索引faidx和dict，生成bed文件和interval list文件
+cd /data2/Sundongxiao/lhc/genome
+gatk CreateSequenceDictionary -R Bos.fa #得到dict文件
+samtools faidx Bos.fa #得到fai文件
+awk -v FS="\t" -v OFS="\t" '{print $1 FS "0" FS $2}' Bos.fa.fai > Bos.bed #得到bed文件
+gatk BedToIntervalList -I Bos.bed -O Bos.interval.list -SD Bos.dict #得到interval.list文件
+
+cd /data2/Sundongxiao/lhc/RNA-seq/JJ
+
+#2.对bam文件添加标签
+for i in $(ls *.bam)
+do
+i=${i/.bam/}
+java -jar /opt/software/basic-software-bin/bin/picard.jar \
+AddOrReplaceReadGroups \
+I=${i}.bam \
+O=${i}.sorted.bam \
+SO=coordinate RGID=${i} RGLB=mRNA RGPL=illumina RGPU=HiSeq2500 RGSM=${i}
+done
+
+#3.去除重复
+for i in $(ls *.sorted.bam)
+do
+i=${i/.sorted.bam/}
+gatk \
+MarkDuplicates \
+--INPUT ${i}.sorted.bam \
+--OUTPUT DP1.marked.bam \
+--CREATE_INDEX true \
+--VALIDATION_STRINGENCY SILENT \
+--METRICS_FILE ${i}.marked.metrics
+done
+
+#4.切除内含子区域的reads
+cd /home/Sundongxiao/WORKSPACE/lhc/RNA-seq/JJ
+for i in $(ls *.marked.bam)
+do
+i=${i/.marked.bam/}
+gatk \
+SplitNCigarReads \
+-R /data2/Sundongxiao/lhc/genome/Bos.fa \
+-I ${i}.marked.bam \
+-O ${i}.split.bam
+done
+
+#5.call变异
+for i in $(ls *.split.bam)
+do
+i=${i/.split.bam/}
+gatk \
+--java-options "-Xms6000m -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10" \
+HaplotypeCaller \
+-R /data2/Sundongxiao/lhc/genome/Bos.fa \
+-I ${i}.split.bam \
+-L /data2/Sundongxiao/lhc/genome/Bos.interval.list \
+-O ${i}.vcf.gz \
+-dont-use-soft-clipped-bases \
+--standard-min-confidence-threshold-for-calling 20 \
+--dbsnp ${i}.dbSNP_vcf \
+-ERC GVCF
+done
+
+#6.过滤
+for i in $(ls *.dbSNP_vcf)
+do
+i=${i/.dbSNP_vcf/}
+gatk \
+VariantFiltration \
+--R /data2/Sundongxiao/lhc/genome/Bos.fa \
+--V ${i}.dbSNP_vcf \
+--window 35 \
+--cluster 3 \
+--filter-name "FS" \
+--filter "FS > 30.0" \
+--filter-name "QD" \
+--filter "QD < 2.0" \
+-O ${i}.filter
+done
+
+#7.合并不同样本的vcf文件
+gatk --java-options "-Xms2000m" \
+MergeVcfs \
+--INPUT ${input.vcf}
+--OUTPUT merge.vcf
