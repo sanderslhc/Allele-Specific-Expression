@@ -1,15 +1,15 @@
-#±¾Á÷³Ì»ùÓÚGATK4.0°æ±¾½øĞĞ
+#æœ¬æµç¨‹åŸºäºGATK4.0ç‰ˆæœ¬è¿›è¡Œ
 
-#1.¶Ô²Î¿¼»ùÒò×é½¨Á¢Ë÷ÒıfaidxºÍdict£¬Éú³ÉbedÎÄ¼şºÍinterval listÎÄ¼ş
+#1.å¯¹å‚è€ƒåŸºå› ç»„å»ºç«‹ç´¢å¼•faidxå’Œdictï¼Œç”Ÿæˆbedæ–‡ä»¶å’Œinterval listæ–‡ä»¶
 cd /data2/Sundongxiao/lhc/genome
-gatk CreateSequenceDictionary -R Bos.fa #µÃµ½dictÎÄ¼ş
-samtools faidx Bos.fa #µÃµ½faiÎÄ¼ş
-awk -v FS="\t" -v OFS="\t" '{print $1 FS "0" FS $2}' Bos.fa.fai > Bos.bed #µÃµ½bedÎÄ¼ş
-gatk BedToIntervalList -I Bos.bed -O Bos.interval.list -SD Bos.dict #µÃµ½interval.listÎÄ¼ş
+gatk CreateSequenceDictionary -R Bos.fa #å¾—åˆ°dictæ–‡ä»¶
+samtools faidx Bos.fa #å¾—åˆ°faiæ–‡ä»¶
+awk -v FS="\t" -v OFS="\t" '{print $1 FS "0" FS $2}' Bos.fa.fai > Bos.bed #å¾—åˆ°bedæ–‡ä»¶
+gatk BedToIntervalList -I Bos.bed -O Bos.interval.list -SD Bos.dict #å¾—åˆ°interval.listæ–‡ä»¶
 
 cd /data2/Sundongxiao/lhc/RNA-seq/JJ
 
-#2.¶ÔbamÎÄ¼şÌí¼Ó±êÇ©
+#2.å¯¹bamæ–‡ä»¶æ·»åŠ æ ‡ç­¾
 for i in $(ls *.bam)
 do
 i=${i/.bam/}
@@ -20,7 +20,7 @@ O=${i}.sorted.bam \
 SO=coordinate RGID=${i} RGLB=mRNA RGPL=illumina RGPU=HiSeq2500 RGSM=${i}
 done
 
-#3.È¥³ıÖØ¸´
+#3.å»é™¤é‡å¤
 for i in $(ls *.sorted.bam)
 do
 i=${i/.sorted.bam/}
@@ -33,7 +33,7 @@ MarkDuplicates \
 --METRICS_FILE ${i}.marked.metrics
 done
 
-#4.ÇĞ³ıÄÚº¬×ÓÇøÓòµÄreads
+#4.åˆ‡é™¤å†…å«å­åŒºåŸŸçš„reads
 cd /home/Sundongxiao/WORKSPACE/lhc/RNA-seq/JJ
 for i in $(ls *.marked.bam)
 do
@@ -45,7 +45,7 @@ SplitNCigarReads \
 -O ${i}.split.bam
 done
 
-#5.call±äÒì
+#5.callå˜å¼‚
 for i in $(ls *.split.bam)
 do
 i=${i/.split.bam/}
@@ -62,7 +62,7 @@ HaplotypeCaller \
 -ERC GVCF
 done
 
-#6.¹ıÂË
+#6.è¿‡æ»¤
 for i in $(ls *.dbSNP_vcf)
 do
 i=${i/.dbSNP_vcf/}
@@ -79,8 +79,62 @@ VariantFiltration \
 -O ${i}.filter
 done
 
-#7.ºÏ²¢²»Í¬Ñù±¾µÄvcfÎÄ¼ş
-gatk --java-options "-Xms2000m" \
-MergeVcfs \
---INPUT ${input.vcf}
---OUTPUT merge.vcf
+#7.åˆå¹¶ä¸åŒæ ·æœ¬çš„vcfæ–‡ä»¶
+gatk CombineGVCFs \
+-R /data2/Sundongxiao/lhc/genome/Bos.fa \
+${input.vcf}
+-O JJ.g.vcf
+
+#8.gvcfè½¬vcf
+## GenotypeGVCFs
+gatk GenotypeGVCFs \
+-R /data2/Sundongxiao/lhc/genome/Bos.fa \
+-V JJ.g.vcf \
+-O JJ.vcf.gz
+
+#9.SNPç­›é€‰
+## select snps from vcf
+gatk SelectVariants \
+-R /data2/Sundongxiao/lhc/genome/Bos.fa \
+-V JJ.vcf.gz \
+--select-type-to-include SNP \
+-O JJ.snps.vcf.gz
+
+## VariantFiltration
+gatk VariantFiltration \
+-R /data2/Sundongxiao/lhc/genome/Bos.fa \
+-V JJ.snps.vcf.gz \
+-filter "QD < 2.0" --filter-name "QD2" \
+-filter "QUAL < 30.0" --filter-name "QUAL30" \
+-filter "SOR > 3.0" --filter-name "SOR3" \
+-filter "FS > 60.0" --filter-name "FS60" \
+-filter "MQ < 40.0" --filter-name "MQ40" \
+-filter "MQRankSum < -12.5" --filter-name "MQRankSum-12.5" \
+-filter "ReadPosRankSum < -8.0" --filter-name "ReadPosRankSum-8" \
+-O JJ.snps.filtered_raw.vcf.gz
+
+## select PASS and biallelic SNPs using bcftools view
+bcftools view --threads 4 -m1 -M2 -f PASS -Oz -o JJ.snps.filtered_pass.vcf.gz JJ.snps.filtered_raw.vcf.gz
+bcftools index --threads 4 -f -t JJ.snps.filtered_pass.vcf.gz
+
+#9.indelç­›é€‰
+## select indel from vcf
+gatk SelectVariants \
+-R /data2/Sundongxiao/lhc/genome/Bos.fa \
+--select-type-to-include INDEL \
+-V JJ.vcf.gz \
+-O JJ.indel.vcf.gz
+
+## VariantFiltration
+gatk VariantFiltration \
+-R /data2/Sundongxiao/lhc/genome/Bos.fa \
+-V JJ.snps.vcf.gz \
+-filter "QD < 2.0" --filter-name "QD2" \
+-filter "QUAL < 30.0" --filter-name "QUAL30" \
+-filter "FS > 200.0" --filter-name "FS200" \
+-filter "ReadPosRankSum < -20.0" --filter-name "ReadPosRankSum-20" \
+-O JJ.indel.filtered_raw.vcf.gz
+
+## select PASS and biallelic SNPs using bcftools view
+bcftools view --threads 4 -m1 -M2 -f PASS -Oz -o JJ.indel.filtered_pass.vcf.gz JJ.indel.filtered_raw.vcf.gz
+bcftools index --threads 4 -f -t JJ.indel.filtered_pass.vcf.gz
