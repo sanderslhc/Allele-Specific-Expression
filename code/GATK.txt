@@ -16,32 +16,31 @@ i=${i/.bam/}
 java -jar /opt/software/basic-software-bin/bin/picard.jar \
 AddOrReplaceReadGroups \
 I=${i}.bam \
-O=${i}.sorted.bam \
+O=${i}.marked.bam \
 SO=coordinate RGID=${i} RGLB=mRNA RGPL=illumina RGPU=HiSeq2500 RGSM=${i}
 done
 
 #3.去除重复
-for i in $(ls *.sorted.bam)
-do
-i=${i/.sorted.bam/}
-gatk \
-MarkDuplicates \
---INPUT ${i}.sorted.bam \
---OUTPUT DP1.marked.bam \
---CREATE_INDEX true \
---VALIDATION_STRINGENCY SILENT \
---METRICS_FILE ${i}.marked.metrics
-done
-
-#4.切除内含子区域的reads
-cd /home/Sundongxiao/WORKSPACE/lhc/RNA-seq/JJ
 for i in $(ls *.marked.bam)
 do
 i=${i/.marked.bam/}
 gatk \
+MarkDuplicates \
+--INPUT ${i}.marked.bam \
+--OUTPUT DP1.dup.bam \
+--CREATE_INDEX true \
+--VALIDATION_STRINGENCY SILENT \
+--METRICS_FILE ${i}.dup.metrics
+done
+
+#4.切除内含子区域的reads
+for i in $(ls *.dup.bam)
+do
+i=${i/.dup.bam/}
+gatk \
 SplitNCigarReads \
 -R /data2/Sundongxiao/lhc/genome/Bos.fa \
--I ${i}.marked.bam \
+-I ${i}.dup.bam \
 -O ${i}.split.bam
 done
 
@@ -82,7 +81,7 @@ done
 #7.合并不同样本的vcf文件
 gatk CombineGVCFs \
 -R /data2/Sundongxiao/lhc/genome/Bos.fa \
-${input.vcf}
+-V ${input.vcf}
 -O JJ.g.vcf
 
 #8.gvcf转vcf
@@ -138,3 +137,15 @@ gatk VariantFiltration \
 ## select PASS and biallelic SNPs using bcftools view
 bcftools view --threads 4 -m1 -M2 -f PASS -Oz -o JJ.indel.filtered_pass.vcf.gz JJ.indel.filtered_raw.vcf.gz
 bcftools index --threads 4 -f -t JJ.indel.filtered_pass.vcf.gz
+
+#10.SNP位点对应count值获取
+for i in $(ls *.marked.bam)
+do
+i=${i/.marked.bam/}
+gatk ASEReadCounter \
+-R /data2/Sundongxiao/lhc/genome/Bos.fa \
+-I ${i}.marked.bam \
+-V JJ.snps.filtered_pass.vcf.gz \
+-min-depth 10 \
+-O ${i}.ASE.table.txt \
+--verbosity ERROR
