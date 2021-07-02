@@ -61,37 +61,20 @@ HaplotypeCaller \
 -ERC GVCF
 done
 
-#6.过滤
-for i in $(ls *.dbSNP_vcf)
-do
-i=${i/.dbSNP_vcf/}
-gatk \
-VariantFiltration \
---R /data2/Sundongxiao/lhc/genome/Bos.fa \
---V ${i}.dbSNP_vcf \
---window 35 \
---cluster 3 \
---filter-name "FS" \
---filter "FS > 30.0" \
---filter-name "QD" \
---filter "QD < 2.0" \
--O ${i}.filter
-done
-
-#7.合并不同样本的vcf文件
+#6.合并不同样本的vcf文件
 gatk CombineGVCFs \
 -R /data2/Sundongxiao/lhc/genome/Bos.fa \
 -V ${input.vcf}
 -O JJ.g.vcf
 
-#8.gvcf转vcf
+#7.gvcf转vcf
 ## GenotypeGVCFs
 gatk GenotypeGVCFs \
 -R /data2/Sundongxiao/lhc/genome/Bos.fa \
 -V JJ.g.vcf \
 -O JJ.vcf.gz
 
-#9.SNP筛选
+#8.SNP筛选
 ## select snps from vcf
 gatk SelectVariants \
 -R /data2/Sundongxiao/lhc/genome/Bos.fa \
@@ -104,12 +87,7 @@ gatk VariantFiltration \
 -R /data2/Sundongxiao/lhc/genome/Bos.fa \
 -V JJ.snps.vcf.gz \
 -filter "QD < 2.0" --filter-name "QD2" \
--filter "QUAL < 30.0" --filter-name "QUAL30" \
--filter "SOR > 3.0" --filter-name "SOR3" \
--filter "FS > 60.0" --filter-name "FS60" \
--filter "MQ < 40.0" --filter-name "MQ40" \
--filter "MQRankSum < -12.5" --filter-name "MQRankSum-12.5" \
--filter "ReadPosRankSum < -8.0" --filter-name "ReadPosRankSum-8" \
+-filter "FS > 30.0" --filter-name "FS60" \
 -O JJ.snps.filtered_raw.vcf.gz
 
 ## select PASS and biallelic SNPs using bcftools view
@@ -129,7 +107,6 @@ gatk VariantFiltration \
 -R /data2/Sundongxiao/lhc/genome/Bos.fa \
 -V JJ.snps.vcf.gz \
 -filter "QD < 2.0" --filter-name "QD2" \
--filter "QUAL < 30.0" --filter-name "QUAL30" \
 -filter "FS > 200.0" --filter-name "FS200" \
 -filter "ReadPosRankSum < -20.0" --filter-name "ReadPosRankSum-20" \
 -O JJ.indel.filtered_raw.vcf.gz
