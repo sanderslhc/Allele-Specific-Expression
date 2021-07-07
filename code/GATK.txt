@@ -64,7 +64,7 @@ done
 #6.合并不同样本的vcf文件
 gatk CombineGVCFs \
 -R /data2/Sundongxiao/lhc/genome/Bos.fa \
--V ${input.vcf}
+-V ${input.g.vcf} #需要索引tbi
 -O JJ.g.vcf
 
 #7.gvcf转vcf
